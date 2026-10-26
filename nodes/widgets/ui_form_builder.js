@@ -1,3 +1,4 @@
+const datastore = require('../store/data.js')
 const statestore = require('../store/state.js')
 const { getTopic } = require('../utils/index.js')
 const T = require('../utils/templater.js')
@@ -41,7 +42,15 @@ module.exports = function (RED) {
         const data = {
             schema: Array.isArray(saved.schema) ? saved.schema : seedSchema,
             templates: (saved.templates || []).reduce((list, t) => T.upsertTemplate(list, t), seedTemplates),
-            current: saved.current || null
+            current: saved.current || null,
+            values: (saved.values && typeof saved.values === 'object') ? saved.values : null
+        }
+
+        // keep the latest form values in the datastore so a page reload restores them
+        function storeValues (values) {
+            if (!values || typeof values !== 'object' || Array.isArray(values)) { return }
+            data.values = values
+            try { datastore.save(base, node, { payload: values }) } catch (err) { node.warn(err.message) }
         }
 
         function persist () {
@@ -136,7 +145,7 @@ module.exports = function (RED) {
                         persist()
                         publish(msg)
                     }
-                    if (result.values) { msg.payload = result.values }
+                    if (result.values) { msg.payload = result.values; storeValues(result.values); persist() }
                     msg.ui_update = Object.assign({}, msg.ui_update, { schema: data.schema, templates: data.templates, currentTemplate: data.current })
                     if (action === 'listTemplates') {
                         send({ topic: msg.topic, action, payload: data.templates.map(t => t.name), templates: data.templates })
@@ -150,6 +159,10 @@ module.exports = function (RED) {
                 if (msg.payload && typeof msg.payload === 'object' && !Array.isArray(msg.payload) && msg.vars) {
                     msg.payload = T.render(msg.payload, Object.assign({}, vars, msg.vars))
                 }
+                if (!action && msg.payload && typeof msg.payload === 'object' && !Array.isArray(msg.payload)) {
+                    storeValues(msg.payload)
+                    persist()
+                }
                 setStatus()
             },
             beforeSend: async function (msg) {
@@ -162,6 +175,7 @@ module.exports = function (RED) {
                     const tpl = data.current ? T.findTemplate(data.templates, data.current) : null
                     const tvars = Object.assign({}, vars, tpl?.vars)
                     msg.values = values
+                    if (!config.resetOnSubmit) { storeValues(values); persist() }
                     msg.template = data.current
                     msg.payload = T.buildOutput(config.outputTemplate, values, tvars)
                     delete msg._event
@@ -182,6 +196,7 @@ module.exports = function (RED) {
                         conn.emit('ui-form-builder-error:' + node.id, result.error)
                         return
                     }
+                    if (result.values) { storeValues(result.values) }
                     persist()
                     publish(null)
                     setStatus()
@@ -193,6 +208,7 @@ module.exports = function (RED) {
         publish(null)
         setStatus()
         group.register(node, config, evts)
+        if (data.values) { storeValues(data.values) }
     }
     RED.nodes.registerType('ui-form-builder', FormBuilderNode)
 }

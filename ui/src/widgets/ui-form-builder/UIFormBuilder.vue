@@ -28,6 +28,17 @@
                 <v-btn size="small" variant="text" icon="mdi-delete" :title="t('delete')" data-action="template-delete" :disabled="!selectedTemplate" @click="deleteTemplate" />
             </template>
         </div>
+        <v-dialog v-model="confirmDelete" max-width="420" data-el="form-builder-delete-dialog">
+            <v-card>
+                <v-card-title>{{ t('deleteTitle') }}</v-card-title>
+                <v-card-text>{{ t('deleteText') }} <b>{{ selectedTemplate }}</b>?</v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn variant="text" data-action="template-delete-cancel" @click="confirmDelete = false">{{ t('cancel') }}</v-btn>
+                    <v-btn variant="flat" color="error" data-action="template-delete-confirm" @click="confirmDeleteTemplate">{{ t('delete') }}</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
         <v-alert v-if="error" type="error" density="compact" closable class="mb-2" @click:close="error = null">{{ error }}</v-alert>
 
         <div class="nrdb-ui-form-builder-body">
@@ -75,30 +86,33 @@
             </div>
 
             <!-- the form itself (also the live preview while editing) -->
-            <v-form ref="form" v-model="isValid" class="nrdb-ui-form-builder-form" :disabled="!state.enabled" validate-on="input" @submit.prevent="onSubmit">
+            <v-form ref="form" v-model="isValid" class="nrdb-ui-form-builder-form" :disabled="!state.enabled" validate-on="blur" @submit.prevent="onSubmit">
                 <div class="nrdb-ui-form-builder-grid">
                     <div v-for="f in visibleSchema" :key="f.key" class="nrdb-ui-form-builder-cell" :style="{'grid-column': `span ${f.cols || 12}`}" :data-form="`form-row-${f.key}`">
-                        <v-checkbox v-if="f.type === 'checkbox'" v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)" hide-details="auto" />
-                        <v-switch v-else-if="f.type === 'switch'" v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)" color="primary" hide-details="auto" />
+                        <v-checkbox v-if="f.type === 'checkbox'" v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)" hide-details="auto" @update:model-value="touch(f.key)" />
+                        <v-switch v-else-if="f.type === 'switch'" v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)" color="primary" hide-details="auto" @update:model-value="touch(f.key)" />
                         <v-select
                             v-else-if="f.type === 'select'" v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)"
                             :items="renderOptions(f)" item-title="label" item-value="value" variant="outlined" hide-details="auto"
+                            @update:focused="v => !v && touch(f.key)" @update:model-value="touch(f.key)"
                         />
-                        <v-radio-group v-else-if="f.type === 'radio'" v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)" inline hide-details="auto">
+                        <v-radio-group v-else-if="f.type === 'radio'" v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)" inline hide-details="auto" @update:model-value="touch(f.key)">
                             <v-radio v-for="o in renderOptions(f)" :key="String(o.value)" :label="o.label" :value="o.value" />
                         </v-radio-group>
                         <v-textarea
                             v-else-if="f.type === 'textarea'" v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)"
                             :placeholder="renderText(f.placeholder)" :rows="f.rows || 3" variant="outlined" hide-details="auto"
+                            @update:focused="v => !v && touch(f.key)"
                         />
                         <v-text-field
                             v-else v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)" :type="f.type"
                             :placeholder="renderText(f.placeholder)" :min="f.min" :max="f.max" variant="outlined" hide-details="auto"
+                            @update:focused="v => !v && touch(f.key)"
                         />
                     </div>
                 </div>
                 <div class="nrdb-ui-form-actions">
-                    <v-btn data-action="form-submit" type="submit" variant="flat" size="large" :disabled="!isValid || !state.enabled">{{ props.submit || 'submit' }}</v-btn>
+                    <v-btn data-action="form-submit" type="submit" variant="flat" size="large" :disabled="!state.enabled">{{ props.submit || 'submit' }}</v-btn>
                     <v-btn v-if="props.cancel" data-action="form-clear" variant="outlined" size="large" :disabled="!state.enabled" @click="reset">{{ props.cancel }}</v-btn>
                 </div>
             </v-form>
@@ -130,7 +144,9 @@ const RU = {
     options: 'Варианты (label=value, по строке)',
     required: 'Обязательное',
     apply: 'Применить',
-    cancel: 'Отмена'
+    cancel: 'Отмена',
+    deleteTitle: 'Удалить шаблон',
+    deleteText: 'Удалить шаблон'
 }
 const EN = {
     edit: 'Edit',
@@ -153,7 +169,9 @@ const EN = {
     options: 'Options (label=value per line)',
     required: 'Required',
     apply: 'Apply',
-    cancel: 'Cancel'
+    cancel: 'Cancel',
+    deleteTitle: 'Delete template',
+    deleteText: 'Delete template'
 }
 let uid = 0
 
@@ -177,6 +195,9 @@ export default {
             selectedTemplate: null,
             newTemplateName: '',
             error: null,
+            touched: {},
+            submitted: false,
+            confirmDelete: false,
             fieldTypes: FIELD_TYPES
         }
     },
@@ -232,6 +253,7 @@ export default {
         isTexty (f) { return ['text', 'textarea', 'email', 'password'].includes(f.type) },
         rules (f) {
             return [(v) => {
+                if (!this.submitted && !this.touched[f.key]) { return true }
                 const err = validateValues([f], { [f.key]: v })[f.key]
                 return err ? this.renderText(err) : true
             }]
@@ -244,11 +266,23 @@ export default {
             }
             this.values = next
         },
-        reset () {
-            this.applyDefaults(true)
+        touch (key) {
+            if (this.touched[key]) { return }
+            this.touched = Object.assign({}, this.touched, { [key]: true })
+            this.$nextTick(() => this.$refs.form?.validate())
+        },
+        clearValidation () {
+            this.touched = {}
+            this.submitted = false
             this.$nextTick(() => this.$refs.form?.resetValidation())
         },
+        reset () {
+            this.applyDefaults(true)
+            this.clearValidation()
+        },
         onSubmit () {
+            this.submitted = true
+            this.$nextTick(() => this.$refs.form?.validate())
             const errors = validateValues(this.schema, this.values)
             if (Object.keys(errors).length) { this.error = Object.values(errors).join('; '); return }
             this.$socket.emit('widget-action', this.id, { payload: { ...this.values }, _event: 'submit' })
@@ -257,7 +291,7 @@ export default {
         setValues (payload) {
             if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
                 this.values = Object.assign({}, this.values, payload)
-                this.$nextTick(() => this.$refs.form?.validate())
+                this.clearValidation()
             }
         },
         onInput (msg) {
@@ -291,9 +325,11 @@ export default {
             this.newTemplateName = ''
         },
         deleteTemplate () {
-            if (this.selectedTemplate && window.confirm(`${this.t('delete')}: ${this.selectedTemplate}?`)) {
-                this.op({ action: 'deleteTemplate', name: this.selectedTemplate })
-            }
+            if (this.selectedTemplate) { this.confirmDelete = true }
+        },
+        confirmDeleteTemplate () {
+            this.confirmDelete = false
+            if (this.selectedTemplate) { this.op({ action: 'deleteTemplate', name: this.selectedTemplate }) }
         },
         /* editor */
         withUid (f) { return Object.assign({}, JSON.parse(JSON.stringify(f)), { _uid: ++uid }) },

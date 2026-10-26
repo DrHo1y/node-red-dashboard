@@ -1,6 +1,7 @@
 const helper = require('node-red-node-test-helper')
 const should = require('should') // eslint-disable-line no-unused-vars
 
+const datastore = require('../../../nodes/store/data.js')
 const statestore = require('../../../nodes/store/state.js')
 const { testData1 } = require('../fixtures/index.js')
 const { verifyFlowLoaded } = require('../utils.js')
@@ -93,5 +94,31 @@ describe('ui-form-builder node', function () {
         let err = null
         handler({ emit: (e, m) => { err = m } }, 'node-ui-form-builder', { action: 'setSchema', schema: [{ key: 'a' }, { key: 'a' }] })
         should.exist(err)
+    })
+
+    it('should keep loaded template values (incl. select) for reload/restore', async function () {
+        const selFlow = JSON.parse(JSON.stringify(flow))
+        const s = JSON.parse(selFlow[0].schema)
+        s.push({ type: 'select', key: 'product', label: 'Product', options: [{ label: 'Coffee', value: 'coffee' }, { label: 'Tea', value: 'tea' }] })
+        selFlow[0].schema = JSON.stringify(s)
+        selFlow[0].templates = JSON.stringify([{ name: 'coffee', values: { item: '{{p}}', qty: 2, product: 'tea' }, vars: { p: 'Coffee' } }])
+        await helper.load(nodeImports, selFlow)
+        const n = helper.getNode('node-ui-form-builder')
+        n.receive({ action: 'loadTemplate', template: 'coffee' })
+        await new Promise(resolve => setTimeout(resolve, 50))
+        const expected = { item: 'Coffee', qty: 2, product: 'tea' }
+        datastore.get('node-ui-form-builder').payload.should.eql(expected)
+        n.context().get('formBuilder').values.should.eql(expected)
+    })
+
+    it('should store values after a dashboard loadTemplate op', async function () {
+        await helper.load(nodeImports, flow)
+        const n = helper.getNode('node-ui-form-builder')
+        const base = helper.getNode('config-ui-base')
+        base.emit = () => {}
+        const widget = base.ui.widgets.get('node-ui-form-builder')
+        widget.hooks.onSocket['ui-form-builder-op:node-ui-form-builder']({ emit: () => {} }, 'node-ui-form-builder', { action: 'loadTemplate', name: 'coffee' })
+        datastore.get('node-ui-form-builder').payload.should.eql({ item: 'Coffee', qty: 2 })
+        n.context().get('formBuilder').current.should.equal('coffee')
     })
 })
