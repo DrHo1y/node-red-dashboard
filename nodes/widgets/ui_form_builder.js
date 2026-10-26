@@ -1,4 +1,8 @@
+const fs = require('fs')
+const path = require('path')
+
 const datastore = require('../store/data.js')
+
 const statestore = require('../store/state.js')
 const { getTopic } = require('../utils/index.js')
 const T = require('../utils/templater.js')
@@ -167,13 +171,16 @@ module.exports = function (RED) {
             },
             beforeSend: async function (msg) {
                 if (msg?._event === 'submit') {
-                    const values = T.coerceValues(data.schema, msg.payload || {})
-                    const errors = T.validateValues(data.schema, values)
-                    if (Object.keys(errors).length) {
-                        msg.errors = errors
-                    }
                     const tpl = data.current ? T.findTemplate(data.templates, data.current) : null
                     const tvars = Object.assign({}, vars, tpl?.vars)
+                    // computed fields are recalculated and conditional rules applied on the server
+                    const sub = T.prepareSubmission(data.schema, msg.payload || {}, { keepHidden: !!config.keepHidden, vars: tvars })
+                    const values = sub.values
+                    if (Object.keys(sub.errors).length) {
+                        msg.errors = sub.errors
+                    }
+                    const hidden = Object.keys(sub.state).filter(k => sub.state[k].visible === false)
+                    if (hidden.length) { msg.hidden = hidden }
                     msg.values = values
                     if (!config.resetOnSubmit) { storeValues(values); persist() }
                     msg.template = data.current
@@ -211,4 +218,14 @@ module.exports = function (RED) {
         if (data.values) { storeValues(data.values) }
     }
     RED.nodes.registerType('ui-form-builder', FormBuilderNode)
+
+    // the Node-RED editor uses exactly the same rules/formula logic as the runtime and the dashboard
+    let logicScript = null
+    RED.httpAdmin.get('/ui-form-builder/logic.js', RED.auth.needsPermission('ui-form-builder.read'), function (req, res) {
+        if (!logicScript) {
+            const src = fs.readFileSync(path.join(__dirname, '../utils/templater.js'), 'utf8')
+            logicScript = `(function () { var module = { exports: {} };\n${src}\nwindow.UIFormBuilderLogic = module.exports })()\n`
+        }
+        res.type('application/javascript').send(logicScript)
+    })
 }

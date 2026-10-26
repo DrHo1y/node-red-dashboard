@@ -1,7 +1,7 @@
 <script type="text/javascript">
     (function () {
-        const TYPES = ['text', 'textarea', 'number', 'email', 'password', 'select', 'radio', 'checkbox', 'switch', 'date', 'time', 'color']
-        const ICONS = { text: 'fa-font', textarea: 'fa-align-left', number: 'fa-hashtag', email: 'fa-envelope', password: 'fa-key', select: 'fa-caret-square-o-down', radio: 'fa-dot-circle-o', checkbox: 'fa-check-square-o', switch: 'fa-toggle-on', date: 'fa-calendar', time: 'fa-clock-o', color: 'fa-tint' }
+        const TYPES = ['text', 'textarea', 'number', 'email', 'password', 'select', 'radio', 'checkbox', 'switch', 'date', 'time', 'color', 'computed']
+        const ICONS = { text: 'fa-font', textarea: 'fa-align-left', number: 'fa-hashtag', email: 'fa-envelope', password: 'fa-key', select: 'fa-caret-square-o-down', radio: 'fa-dot-circle-o', checkbox: 'fa-check-square-o', switch: 'fa-toggle-on', date: 'fa-calendar', time: 'fa-clock-o', color: 'fa-tint', computed: 'fa-calculator' }
 
         function parse (v, fallback) {
             if (typeof v !== 'string') { return v ?? fallback }
@@ -36,6 +36,7 @@
                 allowEdit: { value: true },
                 allowTemplates: { value: true },
                 resetOnSubmit: { value: false },
+                keepHidden: { value: false },
                 contextStore: { value: '' },
                 submit: { value: 'submit' },
                 cancel: { value: 'clear' },
@@ -70,6 +71,13 @@
                 stores.forEach(s => $('#node-input-contextStore').append($('<option>').val(s).text(s)))
                 $('#node-input-contextStore').val(node.contextStore || '')
 
+                /* ---------- shared rules / formula logic (served by the runtime) ---------- */
+                const L = () => window.UIFormBuilderLogic
+                if (!window.UIFormBuilderLogic) {
+                    $.getScript('ui-form-builder/logic.js').done(() => { renderPreview(); if (selected) { showProps(selected) } })
+                }
+                const OPS = ['eq', 'neq', 'gt', 'lt', 'gte', 'lte', 'contains', 'empty', 'notEmpty', 'in']
+
                 /* ---------- visual field editor ---------- */
                 let selected = null
                 const $props = $('#ui-form-builder-props')
@@ -87,29 +95,109 @@
                 }
                 function renderPreview () {
                     const ctx = previewCtx()
+                    const fields = allFields()
+                    let state = {}
+                    let computed = {}
+                    let cerrors = {}
                     const $f = $('<div class="ui-form-builder-pv-grid">')
-                    allFields().forEach(f => {
-                        const label = esc(interpolate(f.label || f.key, ctx)) + (f.required ? ' <span style="color:var(--red-ui-text-color-error,#c00)">*</span>' : '')
+                    if (L()) {
+                        const problems = L().validateSchema(fields)
+                        if (problems.length) {
+                            $f.append(`<div class="ufb-errors" style="grid-column: span 12"><b>${esc(_('schemaErrors'))}:</b><br>${problems.map(esc).join('<br>')}</div>`)
+                        }
+                        const defs = L().defaultValues(fields, ctx)
+                        const res = L().applyLogic(fields, defs, ctx)
+                        state = res.state; computed = res.values; cerrors = res.errors
+                    }
+                    fields.forEach(f => {
+                        const st = state[f.key] || {}
+                        const label = esc(interpolate(f.label || f.key, ctx)) + ((st.required || f.required) ? ' <span style="color:var(--red-ui-text-color-error,#c00)">*</span>' : '')
                         const def = esc(interpolate(f.default == null ? '' : String(f.default), ctx))
                         const ph = esc(interpolate(f.placeholder || '', ctx))
                         let input
                         switch (f.type) {
+                        case 'computed': input = cerrors[f.key]
+                            ? `<div class="ufb-errors">${esc(cerrors[f.key])}</div>`
+                            : `<input type="text" disabled value="${esc(L() ? L().formatComputed(f, computed[f.key]) : '')}" placeholder="${esc(f.formula || '')}">`; break
                         case 'textarea': input = `<textarea rows="${f.rows || 2}" placeholder="${ph}" disabled>${def}</textarea>`; break
-                        case 'select': input = `<select disabled>${(f.options || []).map(o => `<option>${esc(interpolate(o.label, ctx))}</option>`).join('')}</select>`; break
-                        case 'radio': input = (f.options || []).map(o => `<label class="pv-inline"><input type="radio" disabled> ${esc(interpolate(o.label, ctx))}</label>`).join(' '); break
+                        case 'select': input = `<select disabled>${(f.options || []).map(o => `<option ${String(o.value) === String(f.default) ? 'selected' : ''}>${esc(interpolate(o.label, ctx))}</option>`).join('')}</select>`; break
+                        case 'radio': input = (f.options || []).map(o => `<label class="pv-inline"><input type="radio" disabled ${String(o.value) === String(f.default) ? 'checked' : ''}> ${esc(interpolate(o.label, ctx))}</label>`).join(' '); break
                         case 'checkbox':
                         case 'switch': input = `<input type="checkbox" disabled ${f.default === true || f.default === 'true' ? 'checked' : ''}>`; break
                         default: input = `<input type="${f.type === 'number' ? 'number' : (['date', 'time', 'color'].includes(f.type) ? f.type : 'text')}" value="${def}" placeholder="${ph}" disabled>`
                         }
-                        $f.append(`<div class="ui-form-builder-pv-cell" style="grid-column: span ${f.cols || 12}"><div class="pv-label">${label} <code>{{${esc(f.key)}}}</code></div>${input}</div>`)
+                        const flags = (st.visible === false ? ` <span class="ufb-badge">${esc(_('hiddenBadge'))}</span>` : '') +
+                            ((f.visibleIf || f.disabledIf || f.requiredIf) ? ' <i class="fa fa-code-fork" title="rules"></i>' : '')
+                        $f.append(`<div class="ui-form-builder-pv-cell${st.visible === false ? ' ufb-pv-hidden' : ''}" style="grid-column: span ${f.cols || 12}"><div class="pv-label">${label} <code>{{${esc(f.key)}}}</code>${flags}</div>${input}</div>`)
                     })
                     $preview.empty().append($f)
+                }
+                /* visual rule builder: field / operator / value rows combined with AND/OR */
+                function ruleBuilder (f, prop, onChange) {
+                    const $box = $('<div class="ufb-rules">').attr('data-rules', prop)
+                    const others = allFields().filter(x => x.key !== f.key)
+                    function cond () { return f[prop] || { match: 'all', rules: [] } }
+                    function save (c) {
+                        const rules = c.rules.filter(r => r.field)
+                        if (!c.rules.length) { delete f[prop] } else { f[prop] = { match: c.match, rules: c.rules } }
+                        if (!rules.length && !c.rules.length) { delete f[prop] }
+                        onChange()
+                    }
+                    function draw () {
+                        $box.empty()
+                        const c = cond()
+                        const $head = $('<div class="ufb-rules-head">').appendTo($box)
+                        $('<span class="ufb-rules-title">').text(_(prop)).appendTo($head)
+                        if (c.rules.length > 1) {
+                            const $m = $('<select class="ufb-rule-match">').append($('<option value="all">').text(_('matchAll'))).append($('<option value="any">').text(_('matchAny'))).val(c.match || 'all')
+                            $m.on('change', () => { c.match = $m.val(); save(c) }).appendTo($head)
+                        } else if (!c.rules.length) {
+                            $('<span class="ufb-rules-none">').text(_('noRules')).appendTo($head)
+                        }
+                        c.rules.forEach((r, i) => {
+                            const $r = $('<div class="ufb-rule">').appendTo($box)
+                            const $fld = $('<select class="ufb-rule-field">').appendTo($r)
+                            $fld.append($('<option value="">').text('—'))
+                            others.forEach(o => $fld.append($('<option>').val(o.key).text(`${o.label || o.key} {{${o.key}}}`)))
+                            $fld.val(r.field || '')
+                            const $op = $('<select class="ufb-rule-op">').appendTo($r)
+                            OPS.forEach(o => $op.append($('<option>').val(o).text(_('op_' + o))))
+                            $op.val(r.op || 'eq')
+                            const src = others.find(o => o.key === r.field)
+                            let $val
+                            if (src && (src.type === 'select' || src.type === 'radio') && r.op !== 'in' && r.op !== 'contains') {
+                                $val = $('<select class="ufb-rule-value">')
+                                ;(src.options || []).forEach(o => $val.append($('<option>').val(o.value).text(o.label)))
+                                if (r.value === undefined) { r.value = (src.options || [])[0]?.value }
+                            } else if (src && (src.type === 'checkbox' || src.type === 'switch')) {
+                                $val = $('<select class="ufb-rule-value"><option value="true">true</option><option value="false">false</option></select>')
+                                if (r.value === undefined) { r.value = 'true' }
+                            } else {
+                                $val = $('<input type="text" class="ufb-rule-value">').attr('placeholder', _('value'))
+                            }
+                            $val.val(r.value ?? '').appendTo($r)
+                            if (r.op === 'empty' || r.op === 'notEmpty') { $val.hide() }
+                            $('<a href="#" class="red-ui-button red-ui-button-small"><i class="fa fa-times"></i></a>').appendTo($r).on('click', e => {
+                                e.preventDefault(); c.rules.splice(i, 1); save(c); draw()
+                            })
+                            $fld.on('change', () => { r.field = $fld.val(); delete r.value; save(c); draw() })
+                            $op.on('change', () => { r.op = $op.val(); save(c); draw() })
+                            $val.on('input change', () => { r.value = $val.val(); save(c) })
+                        })
+                        $('<a href="#" class="red-ui-button red-ui-button-small ufb-rule-add"><i class="fa fa-plus"></i> </a>').append($('<span>').text(_('addRule'))).appendTo($box).on('click', e => {
+                            e.preventDefault()
+                            c.rules.push({ field: others[0]?.key || '', op: 'eq' })
+                            save(c); draw()
+                        })
+                    }
+                    draw()
+                    return $box
                 }
                 function updateRow ($row, f) {
                     $row.find('.ufb-icon').attr('class', 'ufb-icon fa ' + (ICONS[f.type] || 'fa-font'))
                     $row.find('.ufb-key').text(f.key)
                     $row.find('.ufb-label').text(f.label || '')
-                    $row.find('.ufb-flags').text((f.required ? '* ' : '') + f.type)
+                    $row.find('.ufb-flags').text((f.required ? '* ' : '') + f.type + ((f.visibleIf || f.disabledIf || f.requiredIf) ? ' ⑂' : ''))
                 }
                 function showProps ($row) {
                     $('#ui-form-builder-fields .ufb-row').removeClass('selected')
@@ -137,13 +225,28 @@
                     row(_('type'), bind($type, 'type')).on('change', () => showProps($row))
                     row(_('key'), bind($('<input type="text">').val(f.key), 'key'))
                     row(_('label'), bind($('<input type="text">').val(f.label), 'label'))
-                    if (f.type === 'checkbox' || f.type === 'switch') {
+                    if (f.type === 'computed') {
+                        const $formula = $('<input type="text" class="ufb-formula" style="font-family:monospace">').val(f.formula || '')
+                        row(_('formula'), bind($formula, 'formula'))
+                        const $ins = $('<select class="ufb-insert">').append($('<option value="">').text(_('insertField')))
+                        allFields().filter(x => x.key !== f.key).forEach(o => $ins.append($('<option>').val(o.key).text(`${o.label || o.key} {{${o.key}}}`)))
+                        $ins.on('change', function () {
+                            if (!$ins.val()) { return }
+                            $formula.val(($formula.val() ? $formula.val() + ' ' : '') + `{{${$ins.val()}}}`).trigger('input')
+                            $ins.val('')
+                        })
+                        row('', $ins)
+                        $('<div class="form-tips">').text(_('formulaTip')).appendTo($props)
+                        row(_('decimals'), bind($('<input type="number" min="0" max="10">').val(f.decimals ?? ''), 'decimals', Number))
+                        row(_('prefix'), bind($('<input type="text">').val(f.prefix || ''), 'prefix'))
+                        row(_('suffix'), bind($('<input type="text">').val(f.suffix || ''), 'suffix'))
+                    } else if (f.type === 'checkbox' || f.type === 'switch') {
                         row(_('default'), bind($('<input type="checkbox" style="width:auto">').prop('checked', f.default === true), 'default'))
                     } else {
                         row(_('default'), bind($('<input type="text">').val(f.default ?? ''), 'default', f.type === 'number' ? v => (isNaN(Number(v)) || /\{\{/.test(v)) ? v : Number(v) : null))
                         row(_('placeholder'), bind($('<input type="text">').val(f.placeholder || ''), 'placeholder'))
                     }
-                    row(_('required'), bind($('<input type="checkbox" style="width:auto">').prop('checked', !!f.required), 'required'))
+                    if (f.type !== 'computed') { row(_('required'), bind($('<input type="checkbox" style="width:auto">').prop('checked', !!f.required), 'required')) }
                     row(_('cols'), bind($('<input type="number" min="1" max="12">').val(f.cols || 12), 'cols', Number))
                     if (f.type === 'number') {
                         row(_('min'), bind($('<input type="number">').val(f.min ?? ''), 'min', Number))
@@ -166,6 +269,14 @@
                             })
                             renderPreview()
                         })
+                    }
+                    /* conditions: visual rule builders */
+                    $('<div class="ufb-subsection">').html('<i class="fa fa-code-fork"></i> ').append($('<span>').text(_('conditions'))).appendTo($props)
+                    const changed = () => { updateRow($row, f); renderPreview() }
+                    $props.append(ruleBuilder(f, 'visibleIf', changed))
+                    if (f.type !== 'computed') {
+                        $props.append(ruleBuilder(f, 'disabledIf', changed))
+                        $props.append(ruleBuilder(f, 'requiredIf', changed))
                     }
                 }
 
@@ -288,6 +399,18 @@
         .ui-form-builder-pv-cell input:not([type=checkbox]):not([type=radio]), .ui-form-builder-pv-cell select, .ui-form-builder-pv-cell textarea { width: 100%; }
         .pv-label code { font-size: 0.8em; opacity: 0.6; }
         .ufb-section { margin-top: 12px; font-weight: bold; }
+        .ufb-subsection { margin: 10px 0 4px; font-weight: bold; }
+        .ufb-rules { border: 1px solid var(--red-ui-secondary-border-color, #ddd); border-radius: 4px; padding: 6px; margin-bottom: 6px; }
+        .ufb-rules-head { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+        .ufb-rules-title { font-weight: bold; }
+        .ufb-rules-none { opacity: 0.6; font-style: italic; }
+        .ufb-rule { display: flex; gap: 4px; align-items: center; margin-bottom: 4px; }
+        .ufb-rule select, .ufb-rule input { width: auto !important; min-width: 0; flex: 1; }
+        .ufb-rule .ufb-rule-op { flex: 0 0 110px; }
+        #ui-form-builder-props .ufb-rule-match { width: auto; }
+        .ufb-errors { color: var(--red-ui-text-color-error, #c00); border: 1px solid currentColor; border-radius: 4px; padding: 4px 6px; margin-bottom: 4px; }
+        .ufb-pv-hidden { opacity: 0.4; }
+        .ufb-badge { font-size: 0.75em; background: #999; color: #fff; border-radius: 3px; padding: 0 4px; }
     </style>
     <div class="form-row">
         <label for="node-input-name"><i class="fa fa-tag"></i> <span data-i18n="node-red:common.label.name"></span></label>
@@ -354,6 +477,10 @@
     <div class="form-row">
         <label></label>
         <input type="checkbox" id="node-input-resetOnSubmit" style="width:auto"> <label for="node-input-resetOnSubmit" style="width:auto" data-i18n="ui-form-builder.label.resetOnSubmit"></label>
+    </div>
+    <div class="form-row">
+        <label></label>
+        <input type="checkbox" id="node-input-keepHidden" style="width:auto"> <label for="node-input-keepHidden" style="width:auto" data-i18n="ui-form-builder.label.keepHidden"></label>
     </div>
     <div class="form-row">
         <label for="node-input-submit"><i class="fa fa-square"></i> <span data-i18n="ui-form-builder.label.buttons"></span></label>
