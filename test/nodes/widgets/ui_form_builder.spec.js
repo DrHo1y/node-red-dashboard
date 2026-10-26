@@ -121,4 +121,40 @@ describe('ui-form-builder node', function () {
         datastore.get('node-ui-form-builder').payload.should.eql({ item: 'Coffee', qty: 2 })
         n.context().get('formBuilder').current.should.equal('coffee')
     })
+
+    it('should validate conditional / computed fields server-side on submit', async function () {
+        const logicFlow = flow.map(n => n.id === 'node-ui-form-builder'
+            ? Object.assign({}, n, {
+                outputTemplate: '',
+                schema: JSON.stringify([
+                    { key: 'qty', type: 'number', required: true },
+                    { key: 'price', type: 'number' },
+                    { key: 'total', type: 'computed', formula: '{{qty}} * {{price}}' },
+                    { key: 'delivery', type: 'select', options: [{ label: 'yes', value: 'yes' }, { label: 'no', value: 'no' }] },
+                    { key: 'address', type: 'text', visibleIf: { rules: [{ field: 'delivery', op: 'eq', value: 'yes' }] }, requiredIf: { rules: [{ field: 'delivery', op: 'eq', value: 'yes' }] } }
+                ])
+            })
+            : n)
+        await helper.load(nodeImports, logicFlow)
+        const base = helper.getNode('config-ui-base')
+        const widget = base.ui.widgets.get('node-ui-form-builder')
+        let msg = await widget.hooks.beforeSend({ _event: 'submit', payload: { qty: '2', price: '5', total: 1e6, delivery: 'no', address: 'hidden st' } })
+        msg.payload.should.eql({ qty: 2, price: 5, total: 10, delivery: 'no' })
+        msg.hidden.should.eql(['address'])
+        should.not.exist(msg.errors)
+        msg = await widget.hooks.beforeSend({ _event: 'submit', payload: { qty: 2, price: 5, delivery: 'yes' } })
+        msg.errors.should.have.property('address')
+    })
+
+    it('should reject a schema with a circular formula', async function () {
+        await helper.load(nodeImports, flow)
+        const base = helper.getNode('config-ui-base')
+        base.emit = () => {}
+        const widget = base.ui.widgets.get('node-ui-form-builder')
+        let err = null
+        widget.hooks.onSocket['ui-form-builder-op:node-ui-form-builder']({ emit: (e, m) => { err = m } }, 'node-ui-form-builder', {
+            action: 'setSchema', schema: [{ key: 'a', type: 'computed', formula: '{{b}}' }, { key: 'b', type: 'computed', formula: '{{a}}' }]
+        })
+        String(err).should.match(/circular dependency/)
+    })
 })

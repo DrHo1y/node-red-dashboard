@@ -1,0 +1,167 @@
+[
+    {
+        "id": "fb-ex3-tab",
+        "type": "tab",
+        "label": "Form builder: conditions & formulas",
+        "disabled": false,
+        "info": "Order form: total = price × qty (computed), discount shown only if total > 100, address shown (and required) only if delivery = yes. Hidden fields are excluded from msg.payload; msg.hidden lists them."
+    },
+    {
+        "id": "fb-ex3-form",
+        "type": "ui-form-builder",
+        "z": "fb-ex3-tab",
+        "group": "fb-ex3-group",
+        "name": "Conditional order",
+        "label": "Order with total, discount & delivery",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "schema": "[{\"type\": \"text\", \"key\": \"product\", \"label\": \"Product\", \"required\": true, \"cols\": 6}, {\"type\": \"number\", \"key\": \"price\", \"label\": \"Price\", \"default\": \"12.5\", \"min\": \"0\", \"cols\": 3}, {\"type\": \"number\", \"key\": \"qty\", \"label\": \"Quantity\", \"default\": \"1\", \"min\": \"1\", \"cols\": 3}, {\"type\": \"computed\", \"key\": \"total\", \"label\": \"Total\", \"formula\": \"{{price}} * {{qty}}\", \"decimals\": 2, \"suffix\": \" ₽\", \"cols\": 6}, {\"type\": \"number\", \"key\": \"discount\", \"label\": \"Discount, % (orders over 100)\", \"min\": \"0\", \"max\": \"50\", \"cols\": 6, \"visibleIf\": {\"match\": \"all\", \"rules\": [{\"field\": \"total\", \"op\": \"gt\", \"value\": \"100\"}]}}, {\"type\": \"computed\", \"key\": \"toPay\", \"label\": \"To pay\", \"formula\": \"if({{total}} > 100, round({{total}} * (1 - {{discount}} / 100), 2), {{total}})\", \"decimals\": 2, \"suffix\": \" ₽\", \"cols\": 6}, {\"type\": \"radio\", \"key\": \"delivery\", \"label\": \"Delivery\", \"default\": \"no\", \"options\": [{\"label\": \"Yes\", \"value\": \"yes\"}, {\"label\": \"No (pickup)\", \"value\": \"no\"}], \"cols\": 6}, {\"type\": \"textarea\", \"key\": \"address\", \"label\": \"Delivery address\", \"rows\": 2, \"cols\": 12, \"visibleIf\": {\"match\": \"all\", \"rules\": [{\"field\": \"delivery\", \"op\": \"eq\", \"value\": \"yes\"}]}, \"requiredIf\": {\"match\": \"all\", \"rules\": [{\"field\": \"delivery\", \"op\": \"eq\", \"value\": \"yes\"}]}}, {\"type\": \"computed\", \"key\": \"summary\", \"label\": \"Summary\", \"formula\": \"{{qty}} & \\\" × \\\" & {{product}} & \\\" = \\\" & {{toPay}}\", \"cols\": 12}]",
+        "templates": "[{\"name\": \"Big order\", \"values\": {\"product\": \"Coffee beans\", \"price\": 25, \"qty\": 6, \"discount\": 10, \"delivery\": \"yes\", \"address\": \"Lenina 1\"}}]",
+        "vars": "{}",
+        "outputTemplate": "",
+        "allowEdit": true,
+        "allowTemplates": true,
+        "resetOnSubmit": false,
+        "contextStore": "",
+        "submit": "Place order",
+        "cancel": "Reset",
+        "topic": "order",
+        "topicType": "str",
+        "className": "",
+        "x": 200,
+        "y": 100,
+        "wires": [
+            [
+                "fb-ex3-debug"
+            ]
+        ],
+        "keepHidden": false
+    },
+    {
+        "id": "fb-ex3-debug",
+        "type": "debug",
+        "z": "fb-ex3-tab",
+        "name": "order",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "complete": "true",
+        "targetType": "full",
+        "x": 420,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "fb-ex3-inj",
+        "type": "inject",
+        "z": "fb-ex3-tab",
+        "name": "load 'Big order'",
+        "props": [
+            {
+                "p": "action",
+                "v": "loadTemplate",
+                "vt": "str"
+            },
+            {
+                "p": "template",
+                "v": "Big order",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "once": false,
+        "x": 160,
+        "y": 160,
+        "wires": [
+            [
+                "fb-ex3-form"
+            ]
+        ]
+    },
+    {
+        "id": "fb-ex3-group",
+        "type": "ui-group",
+        "name": "Order (conditions & totals)",
+        "page": "fb-ui-page",
+        "width": "8",
+        "height": "1",
+        "order": 3,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "fb-ui-base",
+        "type": "ui-base",
+        "name": "Dashboard",
+        "path": "/dashboard",
+        "appIcon": "",
+        "includeClientData": true,
+        "acceptsClientConfig": [
+            "ui-notification",
+            "ui-control"
+        ],
+        "showPathInSidebar": false,
+        "headerContent": "page",
+        "navigationStyle": "default",
+        "titleBarStyle": "default"
+    },
+    {
+        "id": "fb-ui-page",
+        "type": "ui-page",
+        "name": "Form Builder",
+        "ui": "fb-ui-base",
+        "path": "/form-builder",
+        "icon": "form-select",
+        "layout": "grid",
+        "theme": "fb-ui-theme",
+        "breakpoints": [
+            {
+                "name": "Default",
+                "px": "0",
+                "cols": "3"
+            },
+            {
+                "name": "Tablet",
+                "px": "576",
+                "cols": "6"
+            },
+            {
+                "name": "Small Desktop",
+                "px": "768",
+                "cols": "9"
+            },
+            {
+                "name": "Desktop",
+                "px": "1024",
+                "cols": "12"
+            }
+        ],
+        "order": 1,
+        "className": "",
+        "visible": "true",
+        "disabled": "false"
+    },
+    {
+        "id": "fb-ui-theme",
+        "type": "ui-theme",
+        "name": "Default Theme",
+        "colors": {
+            "surface": "#ffffff",
+            "primary": "#0094CE",
+            "bgPage": "#eeeeee",
+            "groupBg": "#ffffff",
+            "groupOutline": "#cccccc"
+        },
+        "sizes": {
+            "density": "default",
+            "pagePadding": "12px",
+            "groupGap": "12px",
+            "groupBorderRadius": "4px",
+            "widgetGap": "12px"
+        }
+    }
+]

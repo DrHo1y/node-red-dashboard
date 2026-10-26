@@ -77,8 +77,47 @@
                         :label="t('options')" rows="3" density="compact" variant="outlined" hide-details
                         @update:model-value="v => setOptions(current, v)"
                     />
-                    <v-checkbox v-model="current.required" :label="t('required')" density="compact" hide-details />
+                    <template v-if="current.type === 'computed'">
+                        <v-text-field v-model="current.formula" :label="t('formula')" density="compact" variant="outlined" hide-details class="nrdb-ui-form-builder-formula" data-el="formula" />
+                        <v-select
+                            :items="draftKeys(current)" :label="t('insertField')" density="compact" variant="outlined" hide-details :model-value="null"
+                            @update:model-value="k => k && (current.formula = (current.formula ? current.formula + ' ' : '') + '{{' + k + '}}')"
+                        />
+                        <div class="nrdb-ui-form-builder-hint">{{ t('formulaTip') }}</div>
+                        <div class="nrdb-ui-form-builder-row3">
+                            <v-text-field v-model="current.decimals" type="number" min="0" :label="t('decimals')" density="compact" variant="outlined" hide-details />
+                            <v-text-field v-model="current.prefix" :label="t('prefix')" density="compact" variant="outlined" hide-details />
+                            <v-text-field v-model="current.suffix" :label="t('suffix')" density="compact" variant="outlined" hide-details />
+                        </div>
+                    </template>
+                    <v-checkbox v-else v-model="current.required" :label="t('required')" density="compact" hide-details />
+                    <!-- visual rule builder -->
+                    <div v-for="cp in condProps(current)" :key="cp" class="nrdb-ui-form-builder-rules" :data-rules="cp">
+                        <div class="head">
+                            <b>{{ t(cp) }}</b>
+                            <v-btn-toggle
+                                v-if="(current[cp]?.rules || []).length > 1" :model-value="current[cp].match || 'all'" density="compact" mandatory variant="outlined" divided
+                                @update:model-value="v => current[cp].match = v"
+                            >
+                                <v-btn value="all" size="x-small">{{ t('and') }}</v-btn>
+                                <v-btn value="any" size="x-small">{{ t('or') }}</v-btn>
+                            </v-btn-toggle>
+                            <span v-else-if="!(current[cp]?.rules || []).length" class="none">{{ t('always') }}</span>
+                        </div>
+                        <div v-for="(r, ri) in (current[cp]?.rules || [])" :key="ri" class="rule">
+                            <v-select v-model="r.field" :items="draftKeys(current)" density="compact" variant="outlined" hide-details class="fld" />
+                            <v-select v-model="r.op" :items="opItems" item-title="title" item-value="value" density="compact" variant="outlined" hide-details class="op" />
+                            <v-select
+                                v-if="ruleChoices(r) && r.op !== 'in' && r.op !== 'contains'" v-model="r.value" :items="ruleChoices(r)" item-title="label" item-value="value"
+                                density="compact" variant="outlined" hide-details class="val"
+                            />
+                            <v-text-field v-else-if="r.op !== 'empty' && r.op !== 'notEmpty'" v-model="r.value" :placeholder="t('value')" density="compact" variant="outlined" hide-details class="val" />
+                            <v-btn size="x-small" variant="text" icon="mdi-close" @click="removeRule(cp, ri)" />
+                        </div>
+                        <v-btn size="x-small" variant="tonal" prepend-icon="mdi-plus" :data-action="`rule-add-${cp}`" @click="addRule(cp)">{{ t('addRule') }}</v-btn>
+                    </div>
                 </div>
+                <v-alert v-if="draftErrors.length" type="warning" density="compact" data-el="schema-errors">{{ draftErrors.join('; ') }}</v-alert>
                 <div class="nrdb-ui-form-builder-editor-actions">
                     <v-btn size="small" variant="flat" color="primary" data-action="schema-save" @click="saveSchema">{{ t('apply') }}</v-btn>
                     <v-btn size="small" variant="text" @click="cancelEdit">{{ t('cancel') }}</v-btn>
@@ -88,24 +127,29 @@
             <!-- the form itself (also the live preview while editing) -->
             <v-form ref="form" v-model="isValid" class="nrdb-ui-form-builder-form" :disabled="!state.enabled" validate-on="blur" @submit.prevent="onSubmit">
                 <div class="nrdb-ui-form-builder-grid">
-                    <div v-for="f in visibleSchema" :key="f.key" class="nrdb-ui-form-builder-cell" :style="{'grid-column': `span ${f.cols || 12}`}" :data-form="`form-row-${f.key}`">
-                        <v-checkbox v-if="f.type === 'checkbox'" v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)" hide-details="auto" @update:model-value="touch(f.key)" />
-                        <v-switch v-else-if="f.type === 'switch'" v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)" color="primary" hide-details="auto" @update:model-value="touch(f.key)" />
+                    <div v-for="f in displaySchema" :key="f.key" class="nrdb-ui-form-builder-cell" :style="{'grid-column': `span ${f.cols || 12}`}" :data-form="`form-row-${f.key}`">
+                        <v-text-field
+                            v-if="f.type === 'computed'" :model-value="computedText(f)" :label="fieldLabel(f)" readonly variant="outlined"
+                            prepend-inner-icon="mdi-calculator-variant-outline" :error-messages="logic.errors[f.key] ? [logic.errors[f.key]] : []" hide-details="auto"
+                            class="nrdb-ui-form-builder-computed" :data-computed="f.key"
+                        />
+                        <v-checkbox v-else-if="f.type === 'checkbox'" v-model="values[f.key]" :disabled="fieldState(f).disabled" :label="fieldLabel(f)" :rules="rules(f)" hide-details="auto" @update:model-value="touch(f.key)" />
+                        <v-switch v-else-if="f.type === 'switch'" v-model="values[f.key]" :disabled="fieldState(f).disabled" :label="fieldLabel(f)" :rules="rules(f)" color="primary" hide-details="auto" @update:model-value="touch(f.key)" />
                         <v-select
-                            v-else-if="f.type === 'select'" v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)"
+                            v-else-if="f.type === 'select'" v-model="values[f.key]" :disabled="fieldState(f).disabled" :label="fieldLabel(f)" :rules="rules(f)"
                             :items="renderOptions(f)" item-title="label" item-value="value" variant="outlined" hide-details="auto"
                             @update:focused="v => !v && touch(f.key)" @update:model-value="touch(f.key)"
                         />
-                        <v-radio-group v-else-if="f.type === 'radio'" v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)" inline hide-details="auto" @update:model-value="touch(f.key)">
+                        <v-radio-group v-else-if="f.type === 'radio'" v-model="values[f.key]" :disabled="fieldState(f).disabled" :label="fieldLabel(f)" :rules="rules(f)" inline hide-details="auto" @update:model-value="touch(f.key)">
                             <v-radio v-for="o in renderOptions(f)" :key="String(o.value)" :label="o.label" :value="o.value" />
                         </v-radio-group>
                         <v-textarea
-                            v-else-if="f.type === 'textarea'" v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)"
+                            v-else-if="f.type === 'textarea'" v-model="values[f.key]" :disabled="fieldState(f).disabled" :label="fieldLabel(f)" :rules="rules(f)"
                             :placeholder="renderText(f.placeholder)" :rows="f.rows || 3" variant="outlined" hide-details="auto"
                             @update:focused="v => !v && touch(f.key)"
                         />
                         <v-text-field
-                            v-else v-model="values[f.key]" :label="fieldLabel(f)" :rules="rules(f)" :type="f.type"
+                            v-else v-model="values[f.key]" :disabled="fieldState(f).disabled" :label="fieldLabel(f)" :rules="rules(f)" :type="f.type"
                             :placeholder="renderText(f.placeholder)" :min="f.min" :max="f.max" variant="outlined" hide-details="auto"
                             @update:focused="v => !v && touch(f.key)"
                         />
@@ -121,7 +165,7 @@
 </template>
 
 <script>
-import { FIELD_TYPES, defaultValues, findTemplate, interpolate, normalizeSchema, validateSchema, validateValues } from './templater.mjs'
+import { FIELD_TYPES, RULE_OPS, applyLogic, defaultValues, findTemplate, formatComputed, interpolate, normalizeSchema, prepareSubmission, validateSchema, validateValues } from './templater.mjs'
 
 const RU = {
     edit: 'Редактировать',
@@ -146,7 +190,25 @@ const RU = {
     apply: 'Применить',
     cancel: 'Отмена',
     deleteTitle: 'Удалить шаблон',
-    deleteText: 'Удалить шаблон'
+    deleteText: 'Удалить шаблон',
+    formula: 'Формула',
+    insertField: 'Вставить поле',
+    formulaTip: 'напр. {{qty}} * {{price}}, round(x, 2), if(усл, a, b), days(от, до), "текст" & {{поле}}',
+    decimals: 'Знаков',
+    prefix: 'Префикс',
+    suffix: 'Суффикс',
+    visibleIf: 'Показывать, если',
+    disabledIf: 'Блокировать, если',
+    requiredIf: 'Обязательно, если',
+    and: 'И (все)',
+    or: 'ИЛИ (любое)',
+    always: 'всегда',
+    addRule: 'Правило',
+    value: 'значение',
+    op_contains: 'содержит',
+    op_empty: 'пусто',
+    op_notEmpty: 'не пусто',
+    op_in: 'в списке'
 }
 const EN = {
     edit: 'Edit',
@@ -171,8 +233,27 @@ const EN = {
     apply: 'Apply',
     cancel: 'Cancel',
     deleteTitle: 'Delete template',
-    deleteText: 'Delete template'
+    deleteText: 'Delete template',
+    formula: 'Formula',
+    insertField: 'Insert field',
+    formulaTip: 'e.g. {{qty}} * {{price}}, round(x, 2), if(cond, a, b), days(from, to), "text" & {{field}}',
+    decimals: 'Decimals',
+    prefix: 'Prefix',
+    suffix: 'Suffix',
+    visibleIf: 'Show only if',
+    disabledIf: 'Disable if',
+    requiredIf: 'Required if',
+    and: 'AND (all)',
+    or: 'OR (any)',
+    always: 'always',
+    addRule: 'Rule',
+    value: 'value',
+    op_contains: 'contains',
+    op_empty: 'is empty',
+    op_notEmpty: 'is not empty',
+    op_in: 'in list'
 }
+const OP_SYMBOLS = { eq: '=', neq: '≠', gt: '>', lt: '<', gte: '≥', lte: '≤' }
 let uid = 0
 
 export default {
@@ -224,7 +305,13 @@ export default {
         canEdit () { return !!this.props.allowEdit },
         showTemplates () { return this.props.allowTemplates || this.templates.length > 0 },
         visibleSchema () { return this.editing ? normalizeSchema(this.draft) : this.schema },
-        current () { return this.draft[this.selectedIndex] }
+        current () { return this.draft[this.selectedIndex] },
+        logic () {
+            try { return applyLogic(this.visibleSchema, this.values, this.vars) } catch (e) { return { values: this.values, state: {}, errors: {} } }
+        },
+        displaySchema () { return this.visibleSchema.filter(f => this.fieldState(f).visible !== false) },
+        draftErrors () { return this.editing ? validateSchema(normalizeSchema(this.cleanDraft())) : [] },
+        opItems () { return RULE_OPS.map(o => ({ value: o, title: OP_SYMBOLS[o] || this.t('op_' + o) })) }
     },
     watch: {
         schema (n, o) {
@@ -248,13 +335,34 @@ export default {
             return (lang.startsWith('ru') ? RU : EN)[key] || key
         },
         renderText (s) { return typeof s === 'string' ? interpolate(s, this.ctx) : s },
-        fieldLabel (f) { const l = this.renderText(f.label); return f.required ? `* ${l}` : l },
+        fieldState (f) { return this.logic.state[f.key] || {} },
+        fieldLabel (f) { const l = this.renderText(f.label); return (f.required || this.fieldState(f).required) ? `* ${l}` : l },
+        computedText (f) { return this.logic.errors[f.key] ? '' : formatComputed(f, this.logic.values[f.key]) },
+        condProps (f) { return f.type === 'computed' ? ['visibleIf'] : ['visibleIf', 'disabledIf', 'requiredIf'] },
+        draftKeys (f) { return this.draft.filter(x => x.key !== f.key).map(x => x.key) },
+        ruleChoices (r) {
+            const src = this.draft.find(x => x.key === r.field)
+            if (!src) { return null }
+            if (src.type === 'select' || src.type === 'radio') { return (src.options || []).map(o => ({ label: String(o.label), value: o.value })) }
+            if (src.type === 'checkbox' || src.type === 'switch') { return [{ label: 'true', value: true }, { label: 'false', value: false }] }
+            return null
+        },
+        addRule (cp) {
+            const f = this.current
+            if (!f[cp]) { f[cp] = { match: 'all', rules: [] } }
+            f[cp].rules.push({ field: this.draftKeys(f)[0] || '', op: 'eq', value: '' })
+        },
+        removeRule (cp, i) {
+            const f = this.current
+            f[cp].rules.splice(i, 1)
+            if (!f[cp].rules.length) { delete f[cp] }
+        },
         renderOptions (f) { return (f.options || []).map(o => ({ label: this.renderText(o.label), value: o.value })) },
         isTexty (f) { return ['text', 'textarea', 'email', 'password'].includes(f.type) },
         rules (f) {
             return [(v) => {
                 if (!this.submitted && !this.touched[f.key]) { return true }
-                const err = validateValues([f], { [f.key]: v })[f.key]
+                const err = validateValues(this.visibleSchema, Object.assign({}, this.logic.values, { [f.key]: v }))[f.key]
                 return err ? this.renderText(err) : true
             }]
         },
@@ -283,9 +391,10 @@ export default {
         onSubmit () {
             this.submitted = true
             this.$nextTick(() => this.$refs.form?.validate())
-            const errors = validateValues(this.schema, this.values)
+            const { values, errors } = prepareSubmission(this.schema, this.values, { keepHidden: !!this.props.keepHidden, vars: this.vars })
             if (Object.keys(errors).length) { this.error = Object.values(errors).join('; '); return }
-            this.$socket.emit('widget-action', this.id, { payload: { ...this.values }, _event: 'submit' })
+            this.error = null
+            this.$socket.emit('widget-action', this.id, { payload: values, _event: 'submit' })
             if (this.props.resetOnSubmit) { this.reset() }
         },
         setValues (payload) {
@@ -402,6 +511,14 @@ export default {
 .nrdb-ui-form-builder-fielditem.selected { border-color: rgb(var(--v-theme-primary)); }
 .nrdb-ui-form-builder-fielditem.dragover { border-top: 2px solid rgb(var(--v-theme-primary)); }
 .nrdb-ui-form-builder-props { display: flex; flex-direction: column; gap: 6px; }
+.nrdb-ui-form-builder-hint { font-size: 0.75rem; opacity: 0.7; }
+.nrdb-ui-form-builder-row3 { display: flex; gap: 6px; }
+.nrdb-ui-form-builder-rules { border: 1px solid rgba(128,128,128,0.4); border-radius: 6px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.nrdb-ui-form-builder-rules .head { display: flex; align-items: center; gap: 8px; }
+.nrdb-ui-form-builder-rules .none { opacity: 0.6; font-style: italic; }
+.nrdb-ui-form-builder-rules .rule { display: flex; gap: 4px; align-items: center; }
+.nrdb-ui-form-builder-rules .rule .op { flex: 0 0 110px; }
+.nrdb-ui-form-builder-rules .rule .fld, .nrdb-ui-form-builder-rules .rule .val { flex: 1 1 0; min-width: 0; }
 .nrdb-ui-form-builder-editor-actions { display: flex; gap: 6px; }
 .nrdb-ui-form-builder .nrdb-ui-form-actions { margin-top: 10px; display: flex; gap: 8px; }
 </style>

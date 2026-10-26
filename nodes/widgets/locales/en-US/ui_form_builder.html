@@ -24,4 +24,10 @@
     <h3>Persistence</h3>
     <p>Templates and schema changes made at runtime are stored in the node context (key <code>formBuilder</code>) of the selected store.
        Use a persistent store (e.g. <code>localfilesystem</code>) to keep them across restarts. Templates defined here are seeds.</p>
+    <h3>Conditions &amp; computed fields</h3>
+    <p>Each field has a visual rule builder: <i>Show only if</i>, <i>Disable if</i>, <i>Required if</i>
+    (field + operator + value, combined with AND/OR). Hidden fields are not validated and are dropped from
+    <code>msg.payload</code> unless <i>Include hidden fields</i> is ticked; <code>msg.hidden</code> lists them.
+    A <i>Computed</i> field has a safe formula such as <code>{{qty}} * {{price}}</code> (functions round, min, max, if,
+    days, …), is recomputed on the server and included in the payload. Circular dependencies are rejected.</p>
 </script>
