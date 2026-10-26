@@ -1,0 +1,237 @@
+[
+    {
+        "id": "fb-ex1-tab",
+        "type": "tab",
+        "label": "Form builder: order templates",
+        "disabled": false,
+        "info": "Order form with reusable templates. Pick a template in the dashboard, edit, Save as a new template, or use the inject nodes."
+    },
+    {
+        "id": "fb-ex1-form",
+        "type": "ui-form-builder",
+        "z": "fb-ex1-tab",
+        "group": "fb-ex1-group",
+        "name": "Order form",
+        "label": "New order for {{customer}}",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "schema": "[{\"type\": \"text\", \"key\": \"customer\", \"label\": \"Customer\", \"required\": true, \"cols\": 6, \"placeholder\": \"Company name\"}, {\"type\": \"email\", \"key\": \"email\", \"label\": \"E-mail\", \"cols\": 6}, {\"type\": \"select\", \"key\": \"product\", \"label\": \"Product\", \"required\": true, \"cols\": 6, \"options\": [{\"label\": \"Coffee beans 1kg\", \"value\": \"coffee\"}, {\"label\": \"Green tea 500g\", \"value\": \"tea\"}, {\"label\": \"Cocoa 1kg\", \"value\": \"cocoa\"}]}, {\"type\": \"number\", \"key\": \"qty\", \"label\": \"Quantity ({{unit}})\", \"required\": true, \"default\": \"{{defaultQty}}\", \"min\": 1, \"max\": 1000, \"cols\": 3}, {\"type\": \"date\", \"key\": \"deliveryDate\", \"label\": \"Delivery date\", \"cols\": 3}, {\"type\": \"radio\", \"key\": \"priority\", \"label\": \"Priority\", \"default\": \"normal\", \"options\": [{\"label\": \"Normal\", \"value\": \"normal\"}, {\"label\": \"Urgent\", \"value\": \"urgent\"}]}, {\"type\": \"textarea\", \"key\": \"comment\", \"label\": \"Comment\", \"default\": \"Deliver to {{office}}\", \"rows\": 2}, {\"type\": \"checkbox\", \"key\": \"invoice\", \"label\": \"Send invoice\", \"default\": true}]",
+        "templates": "[{\"name\": \"Weekly coffee (Office A)\", \"values\": {\"customer\": \"ACME Ltd\", \"email\": \"buyer@acme.test\", \"product\": \"coffee\", \"qty\": \"{{weeklyQty}}\", \"priority\": \"normal\", \"comment\": \"Deliver to {{office}}\", \"invoice\": true}, \"vars\": {\"office\": \"Office A, 2nd floor\", \"weeklyQty\": 12}}, {\"name\": \"Urgent tea\", \"values\": {\"customer\": \"ACME Ltd\", \"product\": \"tea\", \"qty\": 5, \"priority\": \"urgent\", \"comment\": \"ASAP to {{office}}\", \"invoice\": false}, \"vars\": {\"office\": \"Reception\"}}]",
+        "vars": "{\"unit\": \"pcs\", \"defaultQty\": 1, \"office\": \"Main office\"}",
+        "outputTemplate": "{\"order\": {\"customer\": \"{{customer}}\", \"contact\": \"{{email}}\", \"line\": {\"sku\": \"{{product}}\", \"qty\": \"{{qty}}\"}, \"deliveryDate\": \"{{deliveryDate}}\", \"urgent\": \"{{priority}}\", \"note\": \"{{comment}}\"}, \"sendInvoice\": \"{{invoice}}\"}",
+        "allowEdit": true,
+        "allowTemplates": true,
+        "resetOnSubmit": false,
+        "contextStore": "",
+        "submit": "Place order",
+        "cancel": "Reset",
+        "topic": "order",
+        "topicType": "str",
+        "className": "",
+        "x": 440,
+        "y": 120,
+        "wires": [
+            [
+                "fb-ex1-debug"
+            ]
+        ]
+    },
+    {
+        "id": "fb-ex1-debug",
+        "type": "debug",
+        "z": "fb-ex1-tab",
+        "name": "order",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 660,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "fb-ex1-inj1",
+        "type": "inject",
+        "z": "fb-ex1-tab",
+        "name": "load 'Weekly coffee' for Office B",
+        "props": [
+            {
+                "p": "action",
+                "v": "loadTemplate",
+                "vt": "str"
+            },
+            {
+                "p": "template",
+                "v": "Weekly coffee (Office A)",
+                "vt": "str"
+            },
+            {
+                "p": "vars",
+                "v": "{\"office\":\"Office B, 5th floor\",\"weeklyQty\":20}",
+                "vt": "json"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 190,
+        "y": 60,
+        "wires": [
+            [
+                "fb-ex1-form"
+            ]
+        ]
+    },
+    {
+        "id": "fb-ex1-inj2",
+        "type": "inject",
+        "z": "fb-ex1-tab",
+        "name": "save template from msg",
+        "props": [
+            {
+                "p": "action",
+                "v": "saveTemplate",
+                "vt": "str"
+            },
+            {
+                "p": "template",
+                "v": "Cocoa for {{customer}}",
+                "vt": "str"
+            },
+            {
+                "p": "payload",
+                "v": "{\"customer\":\"Globex\",\"product\":\"cocoa\",\"qty\":3,\"priority\":\"normal\"}",
+                "vt": "json"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 170,
+        "y": 120,
+        "wires": [
+            [
+                "fb-ex1-form"
+            ]
+        ]
+    },
+    {
+        "id": "fb-ex1-inj3",
+        "type": "inject",
+        "z": "fb-ex1-tab",
+        "name": "list templates",
+        "props": [
+            {
+                "p": "action",
+                "v": "listTemplates",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 150,
+        "y": 180,
+        "wires": [
+            [
+                "fb-ex1-form"
+            ]
+        ]
+    },
+    {
+        "id": "fb-ex1-group",
+        "type": "ui-group",
+        "name": "Order (templates)",
+        "page": "fb-ui-page",
+        "width": "8",
+        "height": "1",
+        "order": 1,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "fb-ui-base",
+        "type": "ui-base",
+        "name": "Dashboard",
+        "path": "/dashboard",
+        "appIcon": "",
+        "includeClientData": true,
+        "acceptsClientConfig": [
+            "ui-notification",
+            "ui-control"
+        ],
+        "showPathInSidebar": false,
+        "headerContent": "page",
+        "navigationStyle": "default",
+        "titleBarStyle": "default"
+    },
+    {
+        "id": "fb-ui-page",
+        "type": "ui-page",
+        "name": "Form Builder",
+        "ui": "fb-ui-base",
+        "path": "/form-builder",
+        "icon": "form-select",
+        "layout": "grid",
+        "theme": "fb-ui-theme",
+        "breakpoints": [
+            {
+                "name": "Default",
+                "px": "0",
+                "cols": "3"
+            },
+            {
+                "name": "Tablet",
+                "px": "576",
+                "cols": "6"
+            },
+            {
+                "name": "Small Desktop",
+                "px": "768",
+                "cols": "9"
+            },
+            {
+                "name": "Desktop",
+                "px": "1024",
+                "cols": "12"
+            }
+        ],
+        "order": 1,
+        "className": "",
+        "visible": "true",
+        "disabled": "false"
+    },
+    {
+        "id": "fb-ui-theme",
+        "type": "ui-theme",
+        "name": "Default Theme",
+        "colors": {
+            "surface": "#ffffff",
+            "primary": "#0094CE",
+            "bgPage": "#eeeeee",
+            "groupBg": "#ffffff",
+            "groupOutline": "#cccccc"
+        },
+        "sizes": {
+            "density": "default",
+            "pagePadding": "12px",
+            "groupGap": "12px",
+            "groupBorderRadius": "4px",
+            "widgetGap": "12px"
+        }
+    }
+]

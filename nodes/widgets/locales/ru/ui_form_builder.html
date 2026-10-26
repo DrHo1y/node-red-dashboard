@@ -1,0 +1,27 @@
+<script type="text/html" data-help-name="ui-form-builder">
+    <p>Форма, поля которой собираются визуально, с именованными многоразовыми <b>шаблонами</b> и подстановкой <code>{{переменных}}</code>.</p>
+    <p>У каждого поля есть тип, <b>переменная</b> (ключ), подпись, значение по умолчанию, подсказка, ширина и проверка (обязательное, мин/макс, длина, RegExp).
+       Подписи, подсказки, значения по умолчанию и значения шаблонов могут содержать <code>{{var}}</code> — они берутся из
+       <i>Переменных</i> узла, переменных активного шаблона и текущих значений формы.</p>
+    <h3>Входы</h3>
+    <dl class="message-properties">
+        <dt class="optional">payload <span class="property-type">object</span></dt><dd>устанавливает значения формы (с подстановкой <code>msg.vars</code>).</dd>
+        <dt class="optional">schema <span class="property-type">array</span></dt><dd>заменяет поля формы.</dd>
+        <dt class="optional">action <span class="property-type">string</span></dt>
+        <dd><code>loadTemplate</code> (<code>msg.template</code> — имя, <code>msg.vars</code> — переменные),
+            <code>saveTemplate</code> (<code>msg.template</code> — имя или объект, <code>msg.payload</code> — значения),
+            <code>duplicateTemplate</code> (<code>msg.template</code>, <code>msg.newName</code>),
+            <code>deleteTemplate</code>, <code>listTemplates</code> (выводит список), <code>setSchema</code> (<code>msg.schema</code>).</dd>
+    </dl>
+    <h3>Выходы</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt><dd>отправленные значения или результат шаблона <i>Выход</i>
+            (строка ровно <code>"{{key}}"</code> сохраняет тип значения).</dd>
+        <dt>values <span class="property-type">object</span></dt><dd>типизированные значения.</dd>
+        <dt>template <span class="property-type">string</span></dt><dd>имя активного шаблона.</dd>
+        <dt class="optional">errors <span class="property-type">object</span></dt><dd>ошибки серверной проверки.</dd>
+    </dl>
+    <h3>Хранение</h3>
+    <p>Шаблоны и изменения схемы сохраняются в контексте узла (ключ <code>formBuilder</code>) выбранного хранилища.
+       Для сохранения между перезапусками используйте постоянное хранилище (например, <code>localfilesystem</code>).</p>
+</script>

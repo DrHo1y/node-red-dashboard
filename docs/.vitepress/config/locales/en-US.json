@@ -55,6 +55,7 @@
         "ui-dropdown": "ui-dropdown",
         "ui-file-input": "ui-file-input",
         "ui-form": "ui-form",
+        "ui-form-builder": "ui-form-builder",
         "ui-gauge": "ui-gauge",
         "ui-markdown": "ui-markdown",
         "ui-notification": "ui-notification",

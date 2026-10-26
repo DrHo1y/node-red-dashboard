@@ -1,0 +1,372 @@
+<script type="text/javascript">
+    (function () {
+        const TYPES = ['text', 'textarea', 'number', 'email', 'password', 'select', 'radio', 'checkbox', 'switch', 'date', 'time', 'color']
+        const ICONS = { text: 'fa-font', textarea: 'fa-align-left', number: 'fa-hashtag', email: 'fa-envelope', password: 'fa-key', select: 'fa-caret-square-o-down', radio: 'fa-dot-circle-o', checkbox: 'fa-check-square-o', switch: 'fa-toggle-on', date: 'fa-calendar', time: 'fa-clock-o', color: 'fa-tint' }
+
+        function parse (v, fallback) {
+            if (typeof v !== 'string') { return v ?? fallback }
+            try { return JSON.parse(v) } catch (_e) { return fallback }
+        }
+        function esc (s) { return $('<div>').text(s == null ? '' : String(s)).html() }
+        function interpolate (str, ctx) {
+            if (typeof str !== 'string') { return str }
+            return str.replace(/\{\{\s*([\w$.-]+)\s*\}\}/g, (m, p) => {
+                const v = p.split('.').reduce((a, k) => a == null ? undefined : a[k], ctx)
+                return v == null ? m : (typeof v === 'object' ? JSON.stringify(v) : String(v))
+            })
+        }
+
+        RED.nodes.registerType('ui-form-builder', {
+            category: RED._('@flowfuse/node-red-dashboard/ui-base:ui-base.label.category'),
+            color: RED._('@flowfuse/node-red-dashboard/ui-base:ui-base.colors.light'),
+            defaults: {
+                group: { type: 'ui-group', required: true },
+                name: { value: '' },
+                label: { value: 'Form' },
+                order: { value: 0 },
+                width: { value: 0 },
+                height: { value: 0 },
+                schema: {
+                    value: '[{"type":"text","key":"name","label":"Name","required":true}]',
+                    validate: function (v) { return Array.isArray(parse(v, null)) }
+                },
+                templates: { value: '[]', validate: function (v) { return Array.isArray(parse(v, null)) } },
+                vars: { value: '{}', validate: function (v) { const o = parse(v, null); return o !== null && typeof o === 'object' } },
+                outputTemplate: { value: '' },
+                allowEdit: { value: true },
+                allowTemplates: { value: true },
+                resetOnSubmit: { value: false },
+                contextStore: { value: '' },
+                submit: { value: 'submit' },
+                cancel: { value: 'clear' },
+                topic: { value: 'topic' },
+                topicType: { value: 'msg' },
+                className: { value: '' }
+            },
+            inputs: 1,
+            outputs: 1,
+            icon: 'font-awesome/fa-wpforms',
+            paletteLabel: 'form builder',
+            label: function () { return this.name || this.label || 'form builder' },
+            labelStyle: function () { return this.name ? 'node_label_italic' : '' },
+            oneditprepare: function () {
+                const node = this
+                const _ = (k) => node._('ui-form-builder.label.' + k)
+
+                if (RED.nodes.subflow(this.z)) {
+                    $('#node-input-width').attr('type', 'text')
+                    $('#node-input-height').attr('type', 'text')
+                    $('div.form-row.nr-db-ui-element-hide-in-subflow').hide()
+                    $('div.form-row.nr-db-ui-element-show-in-subflow').show()
+                } else {
+                    $('div.form-row.nr-db-ui-element-hide-in-subflow').show()
+                    $('div.form-row.nr-db-ui-element-show-in-subflow').hide()
+                    $('#node-input-size').elementSizer({ width: '#node-input-width', height: '#node-input-height', group: '#node-input-group' })
+                }
+                $('#node-input-topic').typedInput({ default: 'str', typeField: $('#node-input-topicType'), types: ['str', 'msg', 'flow', 'global'] })
+
+                // context stores
+                const stores = (RED.settings.context && RED.settings.context.stores) || []
+                stores.forEach(s => $('#node-input-contextStore').append($('<option>').val(s).text(s)))
+                $('#node-input-contextStore').val(node.contextStore || '')
+
+                /* ---------- visual field editor ---------- */
+                let selected = null
+                const $props = $('#ui-form-builder-props')
+                const $preview = $('#ui-form-builder-preview')
+
+                function allFields () {
+                    const out = []
+                    $('#ui-form-builder-fields').editableList('items').each(function () { out.push($(this).data('data')) })
+                    return out
+                }
+                function previewCtx () {
+                    const ctx = Object.assign({}, parse($('#node-input-vars').val(), {}) || {})
+                    allFields().forEach(f => { if (f.default !== undefined && f.default !== '') { ctx[f.key] = f.default } })
+                    return ctx
+                }
+                function renderPreview () {
+                    const ctx = previewCtx()
+                    const $f = $('<div class="ui-form-builder-pv-grid">')
+                    allFields().forEach(f => {
+                        const label = esc(interpolate(f.label || f.key, ctx)) + (f.required ? ' <span style="color:var(--red-ui-text-color-error,#c00)">*</span>' : '')
+                        const def = esc(interpolate(f.default == null ? '' : String(f.default), ctx))
+                        const ph = esc(interpolate(f.placeholder || '', ctx))
+                        let input
+                        switch (f.type) {
+                        case 'textarea': input = `<textarea rows="${f.rows || 2}" placeholder="${ph}" disabled>${def}</textarea>`; break
+                        case 'select': input = `<select disabled>${(f.options || []).map(o => `<option>${esc(interpolate(o.label, ctx))}</option>`).join('')}</select>`; break
+                        case 'radio': input = (f.options || []).map(o => `<label class="pv-inline"><input type="radio" disabled> ${esc(interpolate(o.label, ctx))}</label>`).join(' '); break
+                        case 'checkbox':
+                        case 'switch': input = `<input type="checkbox" disabled ${f.default === true || f.default === 'true' ? 'checked' : ''}>`; break
+                        default: input = `<input type="${f.type === 'number' ? 'number' : (['date', 'time', 'color'].includes(f.type) ? f.type : 'text')}" value="${def}" placeholder="${ph}" disabled>`
+                        }
+                        $f.append(`<div class="ui-form-builder-pv-cell" style="grid-column: span ${f.cols || 12}"><div class="pv-label">${label} <code>{{${esc(f.key)}}}</code></div>${input}</div>`)
+                    })
+                    $preview.empty().append($f)
+                }
+                function updateRow ($row, f) {
+                    $row.find('.ufb-icon').attr('class', 'ufb-icon fa ' + (ICONS[f.type] || 'fa-font'))
+                    $row.find('.ufb-key').text(f.key)
+                    $row.find('.ufb-label').text(f.label || '')
+                    $row.find('.ufb-flags').text((f.required ? '* ' : '') + f.type)
+                }
+                function showProps ($row) {
+                    $('#ui-form-builder-fields .ufb-row').removeClass('selected')
+                    selected = $row
+                    if (!$row) { $props.html(`<div class="ufb-empty">${_('selectField')}</div>`); return }
+                    $row.addClass('selected')
+                    const f = $row.data('data')
+                    $props.empty()
+                    function row (lbl, $input) {
+                        $('<div class="form-row">').append($('<label>').text(lbl)).append($input).appendTo($props)
+                        return $input
+                    }
+                    function bind ($in, prop, conv) {
+                        $in.on('input change', function () {
+                            const v = $in.is(':checkbox') ? $in.is(':checked') : $in.val()
+                            if (v === '' && prop !== 'label' && prop !== 'key') { delete f[prop] } else { f[prop] = conv ? conv(v) : v }
+                            updateRow($row, f)
+                            renderPreview()
+                        })
+                        return $in
+                    }
+                    const $type = $('<select>')
+                    TYPES.forEach(t => $type.append($('<option>').val(t).text(_('type_' + t))))
+                    $type.val(f.type)
+                    row(_('type'), bind($type, 'type')).on('change', () => showProps($row))
+                    row(_('key'), bind($('<input type="text">').val(f.key), 'key'))
+                    row(_('label'), bind($('<input type="text">').val(f.label), 'label'))
+                    if (f.type === 'checkbox' || f.type === 'switch') {
+                        row(_('default'), bind($('<input type="checkbox" style="width:auto">').prop('checked', f.default === true), 'default'))
+                    } else {
+                        row(_('default'), bind($('<input type="text">').val(f.default ?? ''), 'default', f.type === 'number' ? v => (isNaN(Number(v)) || /\{\{/.test(v)) ? v : Number(v) : null))
+                        row(_('placeholder'), bind($('<input type="text">').val(f.placeholder || ''), 'placeholder'))
+                    }
+                    row(_('required'), bind($('<input type="checkbox" style="width:auto">').prop('checked', !!f.required), 'required'))
+                    row(_('cols'), bind($('<input type="number" min="1" max="12">').val(f.cols || 12), 'cols', Number))
+                    if (f.type === 'number') {
+                        row(_('min'), bind($('<input type="number">').val(f.min ?? ''), 'min', Number))
+                        row(_('max'), bind($('<input type="number">').val(f.max ?? ''), 'max', Number))
+                    }
+                    if (['text', 'textarea', 'email', 'password'].includes(f.type)) {
+                        row(_('minLength'), bind($('<input type="number">').val(f.minLength ?? ''), 'minLength', Number))
+                        row(_('maxLength'), bind($('<input type="number">').val(f.maxLength ?? ''), 'maxLength', Number))
+                        row(_('pattern'), bind($('<input type="text" placeholder="^[A-Z].*$">').val(f.pattern || ''), 'pattern'))
+                        row(_('patternMessage'), bind($('<input type="text">').val(f.patternMessage || ''), 'patternMessage'))
+                    }
+                    if (f.type === 'textarea') { row(_('rows'), bind($('<input type="number" min="1">').val(f.rows || 3), 'rows', Number)) }
+                    if (f.type === 'select' || f.type === 'radio') {
+                        const txt = (f.options || []).map(o => (String(o.value) === o.label ? o.label : `${o.label}=${o.value}`)).join('\n')
+                        const $opts = $('<textarea rows="4" style="width:70%">').val(txt)
+                        row(_('options'), $opts).on('input', function () {
+                            f.options = $opts.val().split('\n').map(s => s.trim()).filter(Boolean).map(line => {
+                                const i = line.lastIndexOf('=')
+                                return i > 0 ? { label: line.slice(0, i), value: line.slice(i + 1) } : { label: line, value: line }
+                            })
+                            renderPreview()
+                        })
+                    }
+                }
+
+                function uniqueKey (base) {
+                    const keys = allFields().map(f => f.key)
+                    let k = base; let n = 2
+                    while (keys.includes(k)) { k = `${base}_${n++}` }
+                    return k
+                }
+
+                $('#ui-form-builder-fields').css('min-height', '200px').editableList({
+                    sortable: true,
+                    removable: true,
+                    height: 'auto',
+                    addButton: _('addField'),
+                    addItem: function ($row, index, data) {
+                        if (!data || !data.key) {
+                            Object.assign(data, { type: 'text', key: uniqueKey('field' + (index + 1)), label: 'Field ' + (index + 1) })
+                        }
+                        $row.addClass('ufb-row')
+                        $('<i class="ufb-icon fa"></i> <span class="ufb-key"></span> <span class="ufb-label"></span> <span class="ufb-flags"></span>').appendTo($row)
+                        $('<a href="#" class="red-ui-button red-ui-button-small ufb-dup" title="duplicate"><i class="fa fa-clone"></i></a>').appendTo($row).on('click', function (e) {
+                            e.preventDefault(); e.stopPropagation()
+                            const copy = JSON.parse(JSON.stringify(data))
+                            copy.key = uniqueKey(copy.key)
+                            $('#ui-form-builder-fields').editableList('insertItemAt', copy, index + 1)
+                        })
+                        $row.on('click', () => showProps($row))
+                        updateRow($row, data)
+                        renderPreview()
+                        if (!selected) { showProps($row) }
+                    },
+                    removeItem: function (data) {
+                        if (selected && selected.data('data') === data) { showProps(null) }
+                        renderPreview()
+                    },
+                    sortItems: renderPreview
+                })
+                // clicking the row content selects; editableList wraps the row so bind on the container
+                parse(node.schema, []).forEach(f => $('#ui-form-builder-fields').editableList('addItem', JSON.parse(JSON.stringify(f))))
+                if (!allFields().length) { showProps(null) }
+
+                /* ---------- templates ---------- */
+                $('#ui-form-builder-templates').css('min-height', '120px').editableList({
+                    sortable: true,
+                    removable: true,
+                    height: 'auto',
+                    addButton: _('addTemplate'),
+                    addItem: function ($row, index, data) {
+                        $('<input type="text" class="ufb-tpl-name" style="width:28%">').attr('placeholder', _('templateName')).val(data.name || '').appendTo($row)
+                        $('<input type="text" class="ufb-tpl-values" style="width:38%; margin-left:4px">').val(JSON.stringify(data.values || {})).appendTo($row)
+                            .typedInput({ default: 'json', types: ['json'] })
+                        $('<input type="text" class="ufb-tpl-vars" style="width:28%; margin-left:4px">').val(JSON.stringify(data.vars || {})).appendTo($row)
+                            .typedInput({ default: 'json', types: ['json'] })
+                        $row.data('orig', data)
+                    }
+                })
+                parse(node.templates, []).forEach(t => $('#ui-form-builder-templates').editableList('addItem', t))
+                $('#ui-form-builder-snapshot').on('click', function (e) {
+                    e.preventDefault()
+                    const values = {}
+                    allFields().forEach(f => { values[f.key] = f.default ?? '' })
+                    $('#ui-form-builder-templates').editableList('addItem', { name: 'template ' + ($('#ui-form-builder-templates').editableList('length') + 1), values, schema: allFields() })
+                })
+
+                $('#node-input-vars').typedInput({ default: 'json', types: ['json'] }).on('change', renderPreview)
+                $('#node-input-outputTemplate').typedInput({ default: 'json', types: ['json'] })
+
+                $('#ui-form-builder-import').on('click', function (e) {
+                    e.preventDefault()
+                    $('#ui-form-builder-json').toggle().val(JSON.stringify(allFields(), null, 2))
+                })
+                $('#ui-form-builder-json').on('change', function () {
+                    const list = parse($(this).val(), null)
+                    if (!Array.isArray(list)) { RED.notify(_('invalidJson'), 'error'); return }
+                    $('#ui-form-builder-fields').editableList('empty')
+                    selected = null
+                    list.forEach(f => $('#ui-form-builder-fields').editableList('addItem', f))
+                })
+                renderPreview()
+            },
+            oneditsave: function () {
+                const fields = []
+                $('#ui-form-builder-fields').editableList('items').each(function () { fields.push($(this).data('data')) })
+                this.schema = JSON.stringify(fields)
+                const templates = []
+                $('#ui-form-builder-templates').editableList('items').each(function () {
+                    const name = $(this).find('.ufb-tpl-name').val().trim()
+                    if (!name) { return }
+                    const orig = $(this).data('orig') || {}
+                    const t = Object.assign({}, orig, { name, values: parse($(this).find('.ufb-tpl-values').typedInput('value'), {}) })
+                    const vars = parse($(this).find('.ufb-tpl-vars').typedInput('value'), {})
+                    if (vars && Object.keys(vars).length) { t.vars = vars } else { delete t.vars }
+                    templates.push(t)
+                })
+                this.templates = JSON.stringify(templates)
+            },
+            oneditresize: function (size) {
+                const h = Math.max(200, size.height - 600)
+                $('#ui-form-builder-fields').editableList('height', h)
+            }
+        })
+    })()
+</script>
+
+<script type="text/html" data-template-name="ui-form-builder">
+    <style>
+        .ufb-columns { display: flex; gap: 10px; }
+        .ufb-columns > div { flex: 1; min-width: 0; }
+        .ufb-row { cursor: pointer; display: flex; align-items: center; gap: 6px; }
+        .ufb-row .ufb-key { font-family: monospace; font-weight: bold; }
+        .ufb-row .ufb-label { flex: 1; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ufb-row .ufb-flags { opacity: 0.6; font-size: 0.85em; }
+        .red-ui-editableList-item-content.selected, .ufb-row.selected { background: var(--red-ui-list-item-background-selected, #ffebc7); }
+        #ui-form-builder-props .form-row label { width: 30%; }
+        #ui-form-builder-props .form-row input[type=text], #ui-form-builder-props .form-row input[type=number], #ui-form-builder-props .form-row select { width: 65%; }
+        .ufb-empty { opacity: 0.6; padding: 10px; }
+        #ui-form-builder-preview { border: 1px dashed var(--red-ui-secondary-border-color, #ccc); padding: 8px; border-radius: 4px; }
+        .ui-form-builder-pv-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; }
+        .ui-form-builder-pv-cell input:not([type=checkbox]):not([type=radio]), .ui-form-builder-pv-cell select, .ui-form-builder-pv-cell textarea { width: 100%; }
+        .pv-label code { font-size: 0.8em; opacity: 0.6; }
+        .ufb-section { margin-top: 12px; font-weight: bold; }
+    </style>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> <span data-i18n="node-red:common.label.name"></span></label>
+        <input type="text" id="node-input-name" data-i18n="[placeholder]node-red:common.label.name">
+    </div>
+    <div class="form-row">
+        <label for="node-input-group"><i class="fa fa-table"></i> <span data-i18n="ui-form-builder.label.group"></span></label>
+        <input type="text" id="node-input-group">
+    </div>
+    <div class="form-row nr-db-ui-element-hide-in-subflow">
+        <label><i class="fa fa-object-group"></i> <span data-i18n="ui-base.label.size">Size</span></label>
+        <button class="editor-button" id="node-input-size"></button>
+    </div>
+    <div class="form-row nr-db-ui-element-show-in-subflow">
+        <label><i class="fa fa-arrows-h"></i> Width</label>
+        <input type="hidden" id="node-input-width">
+    </div>
+    <div class="form-row nr-db-ui-element-show-in-subflow">
+        <label><i class="fa fa-arrows-v"></i> Height</label>
+        <input type="hidden" id="node-input-height">
+    </div>
+    <div class="form-row">
+        <label for="node-input-label"><i class="fa fa-i-cursor"></i> <span data-i18n="ui-form-builder.label.formLabel"></span></label>
+        <input type="text" id="node-input-label">
+    </div>
+
+    <div class="ufb-section"><i class="fa fa-list"></i> <span data-i18n="ui-form-builder.label.fields"></span>
+        <a href="#" id="ui-form-builder-import" class="red-ui-button red-ui-button-small" style="float:right">JSON</a>
+    </div>
+    <textarea id="ui-form-builder-json" rows="6" style="width:100%; display:none; font-family:monospace"></textarea>
+    <div class="ufb-columns">
+        <div><ol id="ui-form-builder-fields"></ol></div>
+        <div id="ui-form-builder-props"></div>
+    </div>
+    <div class="ufb-section"><i class="fa fa-eye"></i> <span data-i18n="ui-form-builder.label.preview"></span></div>
+    <div id="ui-form-builder-preview"></div>
+
+    <div class="ufb-section"><i class="fa fa-files-o"></i> <span data-i18n="ui-form-builder.label.templates"></span>
+        <a href="#" id="ui-form-builder-snapshot" class="red-ui-button red-ui-button-small" style="float:right" data-i18n="ui-form-builder.label.snapshot"></a>
+    </div>
+    <div class="form-tips" data-i18n="ui-form-builder.label.templatesTip"></div>
+    <ol id="ui-form-builder-templates"></ol>
+
+    <div class="form-row" style="margin-top:10px">
+        <label for="node-input-vars"><i class="fa fa-code"></i> <span data-i18n="ui-form-builder.label.vars"></span></label>
+        <input type="text" id="node-input-vars">
+    </div>
+    <div class="form-row">
+        <label for="node-input-outputTemplate"><i class="fa fa-sign-out"></i> <span data-i18n="ui-form-builder.label.outputTemplate"></span></label>
+        <input type="text" id="node-input-outputTemplate" placeholder='{"customer": "{{name}}", "qty": "{{qty}}"}'>
+    </div>
+    <div class="form-row">
+        <label for="node-input-contextStore"><i class="fa fa-database"></i> <span data-i18n="ui-form-builder.label.contextStore"></span></label>
+        <select id="node-input-contextStore"><option value="" data-i18n="ui-form-builder.label.defaultStore"></option></select>
+    </div>
+    <div class="form-row">
+        <label></label>
+        <input type="checkbox" id="node-input-allowEdit" style="width:auto"> <label for="node-input-allowEdit" style="width:auto" data-i18n="ui-form-builder.label.allowEdit"></label>
+    </div>
+    <div class="form-row">
+        <label></label>
+        <input type="checkbox" id="node-input-allowTemplates" style="width:auto"> <label for="node-input-allowTemplates" style="width:auto" data-i18n="ui-form-builder.label.allowTemplates"></label>
+    </div>
+    <div class="form-row">
+        <label></label>
+        <input type="checkbox" id="node-input-resetOnSubmit" style="width:auto"> <label for="node-input-resetOnSubmit" style="width:auto" data-i18n="ui-form-builder.label.resetOnSubmit"></label>
+    </div>
+    <div class="form-row">
+        <label for="node-input-submit"><i class="fa fa-square"></i> <span data-i18n="ui-form-builder.label.buttons"></span></label>
+        <input type="text" id="node-input-submit" style="width:35%">
+        <input type="text" id="node-input-cancel" style="width:35%">
+    </div>
+    <div class="form-row">
+        <label for="node-input-topic"><i class="fa fa-tasks"></i> <span data-i18n="ui-form-builder.label.topic"></span></label>
+        <input type="text" id="node-input-topic">
+        <input type="hidden" id="node-input-topicType">
+    </div>
+    <div class="form-row">
+        <label for="node-input-className"><i class="fa fa-code"></i> Class</label>
+        <input type="text" id="node-input-className">
+    </div>
+</script>

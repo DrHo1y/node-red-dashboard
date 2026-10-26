@@ -7,6 +7,7 @@ import UIDropdown from './ui-dropdown/UIDropdown.vue'
 import UIEvent from './ui-event/UIEvent.vue'
 import UIFileInput from './ui-file-input/UIFileInput.vue'
 import UIForm from './ui-form/UIForm.vue'
+import UIFormBuilder from './ui-form-builder/UIFormBuilder.vue'
 import UIGauge from './ui-gauge/UIGauge.vue'
 import UIMarkdown from './ui-markdown/UIMarkdown.vue'
 import UINotification from './ui-notification/UINotification.vue'
@@ -32,6 +33,7 @@ export {
     UIEvent,
     UIFileInput,
     UIForm,
+    UIFormBuilder,
     UIGauge,
     UIMarkdown,
     UINotification,
@@ -61,6 +63,7 @@ export default {
     'ui-event': UIEvent,
     'ui-file-input': UIFileInput,
     'ui-form': UIForm,
+    'ui-form-builder': UIFormBuilder,
     'ui-gauge': UIGauge,
     'ui-markdown': UIMarkdown,
     'ui-notification': UINotification,

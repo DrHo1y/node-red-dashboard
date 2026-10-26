@@ -64,6 +64,7 @@ export default {
                                     { text: locale.nodes['ui-event'] || en.nodes['ui-event'], link: '/nodes/widgets/ui-event' },
                                     { text: locale.nodes['ui-file-input'] || en.nodes['ui-file-input'], link: '/nodes/widgets/ui-file-input' },
                                     { text: locale.nodes['ui-form'] || en.nodes['ui-form'], link: '/nodes/widgets/ui-form' },
+                                    { text: locale.nodes['ui-form-builder'] || en.nodes['ui-form-builder'], link: '/nodes/widgets/ui-form-builder' },
                                     { text: locale.nodes['ui-gauge'] || en.nodes['ui-gauge'], link: '/nodes/widgets/ui-gauge' },
                                     { text: locale.nodes['ui-markdown'] || en.nodes['ui-markdown'], link: '/nodes/widgets/ui-markdown' },
                                     { text: locale.nodes['ui-notification'] || en.nodes['ui-notification'], link: '/nodes/widgets/ui-notification' },
