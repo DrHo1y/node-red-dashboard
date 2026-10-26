@@ -1,0 +1,224 @@
+[
+    {
+        "id": "fb-ex2-tab",
+        "type": "tab",
+        "label": "Form builder: dynamic schema",
+        "disabled": false,
+        "info": "The form schema and initial values are pushed via msg.schema / msg.payload / msg.vars."
+    },
+    {
+        "id": "fb-ex2-form",
+        "type": "ui-form-builder",
+        "z": "fb-ex2-tab",
+        "group": "fb-ex2-group",
+        "name": "Dynamic form",
+        "label": "Choose a form",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "schema": "[]",
+        "templates": "[]",
+        "vars": "{}",
+        "outputTemplate": "",
+        "allowEdit": true,
+        "allowTemplates": true,
+        "resetOnSubmit": true,
+        "contextStore": "",
+        "submit": "Send",
+        "cancel": "",
+        "topic": "topic",
+        "topicType": "msg",
+        "className": "",
+        "x": 620,
+        "y": 120,
+        "wires": [
+            [
+                "fb-ex2-debug"
+            ]
+        ]
+    },
+    {
+        "id": "fb-ex2-debug",
+        "type": "debug",
+        "z": "fb-ex2-tab",
+        "name": "submitted",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 820,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "fb-ex2-func",
+        "type": "function",
+        "z": "fb-ex2-tab",
+        "name": "schema by topic",
+        "func": "// pick a schema by msg.topic and send it to the form builder\nconst schemas = {\"bug\": [{\"type\": \"text\", \"key\": \"title\", \"label\": \"Title\", \"required\": true, \"minLength\": 5}, {\"type\": \"select\", \"key\": \"severity\", \"label\": \"Severity\", \"options\": [{\"label\": \"Low\", \"value\": \"low\"}, {\"label\": \"High\", \"value\": \"high\"}], \"default\": \"low\", \"cols\": 6}, {\"type\": \"text\", \"key\": \"version\", \"label\": \"Version\", \"pattern\": \"^\\\\d+\\\\.\\\\d+\\\\.\\\\d+$\", \"patternMessage\": \"Use x.y.z\", \"cols\": 6}, {\"type\": \"textarea\", \"key\": \"steps\", \"label\": \"Steps to reproduce\", \"rows\": 3}], \"feedback\": [{\"type\": \"text\", \"key\": \"name\", \"label\": \"Your name\"}, {\"type\": \"number\", \"key\": \"rating\", \"label\": \"Rating 1-5\", \"min\": 1, \"max\": 5, \"default\": 5, \"required\": true}, {\"type\": \"switch\", \"key\": \"contactMe\", \"label\": \"Contact me\"}, {\"type\": \"color\", \"key\": \"favColor\", \"label\": \"Favourite colour\", \"default\": \"#0094ce\"}]};\nmsg.schema = schemas[msg.topic];\nmsg.ui_update = { label: msg.topic === 'bug' ? 'Bug report' : 'Feedback' };\nmsg.payload = msg.topic === 'bug' ? { version: '{{appVersion}}' } : { name: '{{user}}' };\nmsg.vars = { appVersion: '1.34.0', user: 'Dr. Holy' };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 120,
+        "wires": [
+            [
+                "fb-ex2-form"
+            ]
+        ]
+    },
+    {
+        "id": "fb-ex2-btns",
+        "type": "ui-button-group",
+        "z": "fb-ex2-tab",
+        "name": "",
+        "group": "fb-ex2-group",
+        "order": 0,
+        "width": 0,
+        "height": 0,
+        "label": "Form type",
+        "className": "",
+        "rounded": true,
+        "useThemeColors": true,
+        "passthru": false,
+        "options": [
+            {
+                "label": "Bug report",
+                "icon": "bug",
+                "value": "bug",
+                "valueType": "str",
+                "color": "#009933"
+            },
+            {
+                "label": "Feedback",
+                "icon": "star",
+                "value": "feedback",
+                "valueType": "str",
+                "color": "#999999"
+            }
+        ],
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 150,
+        "y": 120,
+        "wires": [
+            [
+                "fb-ex2-topic"
+            ]
+        ]
+    },
+    {
+        "id": "fb-ex2-topic",
+        "type": "change",
+        "z": "fb-ex2-tab",
+        "name": "payload \u2192 topic",
+        "rules": [
+            {
+                "t": "move",
+                "p": "payload",
+                "pt": "msg",
+                "to": "topic",
+                "tot": "msg"
+            }
+        ],
+        "x": 270,
+        "y": 180,
+        "wires": [
+            [
+                "fb-ex2-func"
+            ]
+        ]
+    },
+    {
+        "id": "fb-ex2-group",
+        "type": "ui-group",
+        "name": "Dynamic form",
+        "page": "fb-ui-page",
+        "width": "6",
+        "height": "1",
+        "order": 2,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "fb-ui-base",
+        "type": "ui-base",
+        "name": "Dashboard",
+        "path": "/dashboard",
+        "appIcon": "",
+        "includeClientData": true,
+        "acceptsClientConfig": [
+            "ui-notification",
+            "ui-control"
+        ],
+        "showPathInSidebar": false,
+        "headerContent": "page",
+        "navigationStyle": "default",
+        "titleBarStyle": "default"
+    },
+    {
+        "id": "fb-ui-page",
+        "type": "ui-page",
+        "name": "Form Builder",
+        "ui": "fb-ui-base",
+        "path": "/form-builder",
+        "icon": "form-select",
+        "layout": "grid",
+        "theme": "fb-ui-theme",
+        "breakpoints": [
+            {
+                "name": "Default",
+                "px": "0",
+                "cols": "3"
+            },
+            {
+                "name": "Tablet",
+                "px": "576",
+                "cols": "6"
+            },
+            {
+                "name": "Small Desktop",
+                "px": "768",
+                "cols": "9"
+            },
+            {
+                "name": "Desktop",
+                "px": "1024",
+                "cols": "12"
+            }
+        ],
+        "order": 1,
+        "className": "",
+        "visible": "true",
+        "disabled": "false"
+    },
+    {
+        "id": "fb-ui-theme",
+        "type": "ui-theme",
+        "name": "Default Theme",
+        "colors": {
+            "surface": "#ffffff",
+            "primary": "#0094CE",
+            "bgPage": "#eeeeee",
+            "groupBg": "#ffffff",
+            "groupOutline": "#cccccc"
+        },
+        "sizes": {
+            "density": "default",
+            "pagePadding": "12px",
+            "groupGap": "12px",
+            "groupBorderRadius": "4px",
+            "widgetGap": "12px"
+        }
+    }
+]

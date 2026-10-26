@@ -138,6 +138,7 @@
             "ui-group": "nodes/config/ui_group.js",
             "ui-theme": "nodes/config/ui_theme.js",
             "ui-form": "nodes/widgets/ui_form.js",
+            "ui-form-builder": "nodes/widgets/ui_form_builder.js",
             "ui-text-input": "nodes/widgets/ui_text_input.js",
             "ui-number-input": "nodes/widgets/ui_number_input.js",
             "ui-file-input": "nodes/widgets/ui_file_input.js",

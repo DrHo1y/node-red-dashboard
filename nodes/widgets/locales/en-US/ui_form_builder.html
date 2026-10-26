@@ -1,0 +1,27 @@
+<script type="text/html" data-help-name="ui-form-builder">
+    <p>A form whose fields are designed visually, with named reusable <b>templates</b> and <code>{{variable}}</code> substitution.</p>
+    <p>Each field has a type, a <b>variable</b> (key), label, default, placeholder, width and validation (required, min/max, length, RegExp).
+       Labels, placeholders, defaults and template values may contain <code>{{var}}</code> placeholders, resolved from the
+       node <i>Variables</i>, the active template's variables and the current form values.</p>
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt class="optional">payload <span class="property-type">object</span></dt><dd>sets form values (rendered with <code>msg.vars</code> if present).</dd>
+        <dt class="optional">schema <span class="property-type">array</span></dt><dd>replaces the form fields.</dd>
+        <dt class="optional">action <span class="property-type">string</span></dt>
+        <dd><code>loadTemplate</code> (<code>msg.template</code> = name, optional <code>msg.vars</code>),
+            <code>saveTemplate</code> (<code>msg.template</code> = name or object, <code>msg.payload</code> = values),
+            <code>duplicateTemplate</code> (<code>msg.template</code>, <code>msg.newName</code>),
+            <code>deleteTemplate</code>, <code>listTemplates</code> (outputs the list), <code>setSchema</code> (<code>msg.schema</code>).</dd>
+    </dl>
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt><dd>the submitted values, or the rendered <i>Output</i> template
+            (strings that are exactly <code>"{{key}}"</code> keep the value type).</dd>
+        <dt>values <span class="property-type">object</span></dt><dd>the raw typed values.</dd>
+        <dt>template <span class="property-type">string</span></dt><dd>name of the active template.</dd>
+        <dt class="optional">errors <span class="property-type">object</span></dt><dd>server side validation errors.</dd>
+    </dl>
+    <h3>Persistence</h3>
+    <p>Templates and schema changes made at runtime are stored in the node context (key <code>formBuilder</code>) of the selected store.
+       Use a persistent store (e.g. <code>localfilesystem</code>) to keep them across restarts. Templates defined here are seeds.</p>
+</script>
